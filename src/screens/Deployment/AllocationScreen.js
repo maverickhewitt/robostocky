@@ -24,6 +24,9 @@ export default function AllocationScreen({ navigation }) {
   const [searchText, setSearchText] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
+  const [editingProjectId, setEditingProjectId] = useState(null);
+  const [editProjectName, setEditProjectName] = useState("");
+
   useFocusEffect(
     useCallback(() => {
       fetchProjects();
@@ -33,7 +36,7 @@ export default function AllocationScreen({ navigation }) {
   const fetchProjects = async () => {
     const { data, error } = await supabase
       .from("projects")
-      .select("name")
+      .select("id, name")
       .order("name", { ascending: true });
     if (!error && data) {
       setProjects(data);
@@ -49,14 +52,49 @@ export default function AllocationScreen({ navigation }) {
       return;
     }
 
-    const { error } = await supabase
+    const { data: compData, error: compError } = await supabase
+      .from("components")
+      .select("quantity, name")
+      .eq("id", componentId)
+      .single();
+
+    if (compError || !compData) {
+      Alert.alert("Error", "Component ID not found in inventory.");
+      return;
+    }
+
+    if (compData.quantity <= 0) {
+      Alert.alert(
+        "Out of Stock",
+        `There are no more units of "${compData.name}" available in the lab to allocate.`,
+      );
+      return;
+    }
+
+    const { error: deployError } = await supabase
       .from("deployments")
       .insert([{ component_id: componentId, project_name: projectName }]);
 
-    if (error) {
-      Alert.alert("Error", error.message);
+    if (deployError) {
+      Alert.alert("Error", deployError.message);
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("components")
+      .update({ quantity: compData.quantity - 1 })
+      .eq("id", componentId);
+
+    if (updateError) {
+      Alert.alert(
+        "Warning",
+        "Allocated to project, but failed to deduct inventory count.",
+      );
     } else {
-      Alert.alert("Success", "Component allocated to project successfully");
+      Alert.alert(
+        "Success",
+        "Component allocated and inventory quantity updated!",
+      );
       navigation.goBack();
     }
   };
@@ -65,6 +103,7 @@ export default function AllocationScreen({ navigation }) {
     setProjectName(selectedName);
     setDropdownVisible(false);
     setSearchText("");
+    setEditingProjectId(null);
   };
 
   const handleCreateNewProject = async () => {
@@ -80,9 +119,68 @@ export default function AllocationScreen({ navigation }) {
       Alert.alert("Error", error.message);
       setIsCreating(false);
     } else {
-      setProjects([...projects, { name: newProjName }]);
+      await fetchProjects();
       selectProject(newProjName);
       setIsCreating(false);
+    }
+  };
+
+  const handleDeleteProject = (id, name) => {
+    Alert.alert(
+      "Delete Project",
+      `Are you sure you want to permanently delete "${name}"?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            const { error } = await supabase
+              .from("projects")
+              .delete()
+              .eq("id", id);
+            if (error) {
+              if (error.code === "23503") {
+                Alert.alert(
+                  "Cannot Delete",
+                  "This project has active hardware deployed to it. Remove deployments first.",
+                );
+              } else {
+                Alert.alert("Error", error.message);
+              }
+            } else {
+              fetchProjects();
+              if (projectName === name) setProjectName("");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const startEditProject = (item) => {
+    setEditingProjectId(item.id);
+    setEditProjectName(item.name);
+  };
+
+  const saveEditProject = async () => {
+    if (!editProjectName.trim()) return;
+
+    const { error } = await supabase
+      .from("projects")
+      .update({ name: editProjectName.trim() })
+      .eq("id", editingProjectId);
+
+    if (error) {
+      Alert.alert("Error", error.message);
+    } else {
+      const oldProject = projects.find((p) => p.id === editingProjectId);
+      if (oldProject && projectName === oldProject.name) {
+        setProjectName(editProjectName.trim());
+      }
+
+      setEditingProjectId(null);
+      fetchProjects();
     }
   };
 
@@ -110,7 +208,7 @@ export default function AllocationScreen({ navigation }) {
           <Text style={styles.label}>Component ID</Text>
           <TextInput
             style={styles.input}
-            placeholder="e.g., COMP-1042"
+            placeholder="e.g., 1042"
             placeholderTextColor="#94a3b8"
             value={componentId}
             onChangeText={setComponentId}
@@ -169,15 +267,55 @@ export default function AllocationScreen({ navigation }) {
 
             <FlatList
               data={filteredProjects}
-              keyExtractor={(item, index) => index.toString()}
+              keyExtractor={(item) => item.id.toString()}
               keyboardShouldPersistTaps="handled"
               style={styles.listArea}
               renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.modalItem}
-                  onPress={() => selectProject(item.name)}>
-                  <Text style={styles.modalItemText}>{item.name}</Text>
-                </TouchableOpacity>
+                <View style={styles.modalItemRow}>
+                  {editingProjectId === item.id ? (
+                    <View style={styles.editRow}>
+                      <TextInput
+                        style={styles.editInput}
+                        value={editProjectName}
+                        onChangeText={setEditProjectName}
+                        autoFocus
+                      />
+                      <TouchableOpacity
+                        style={styles.saveActionBtn}
+                        onPress={saveEditProject}>
+                        <Text style={styles.saveActionText}>Save</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.cancelActionBtn}
+                        onPress={() => setEditingProjectId(null)}>
+                        <Text style={styles.cancelActionText}>X</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <>
+                      <TouchableOpacity
+                        style={styles.modalItem}
+                        onPress={() => selectProject(item.name)}>
+                        <Text style={styles.modalItemText}>{item.name}</Text>
+                      </TouchableOpacity>
+
+                      <View style={styles.actionGroup}>
+                        <TouchableOpacity
+                          style={styles.editBtn}
+                          onPress={() => startEditProject(item)}>
+                          <Text style={styles.editBtnText}>Edit</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.deleteBtn}
+                          onPress={() =>
+                            handleDeleteProject(item.id, item.name)
+                          }>
+                          <Text style={styles.deleteBtnText}>Del</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </View>
               )}
               ListEmptyComponent={
                 searchText.trim() === "" ? (
@@ -193,8 +331,9 @@ export default function AllocationScreen({ navigation }) {
               onPress={() => {
                 setDropdownVisible(false);
                 setSearchText("");
+                setEditingProjectId(null);
               }}>
-              <Text style={styles.closeModalBtnText}>Cancel</Text>
+              <Text style={styles.closeModalBtnText}>Close Menu</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -301,12 +440,72 @@ const styles = StyleSheet.create({
   },
   createBtnText: { color: "#8b5cf6", fontSize: 15, fontWeight: "700" },
   listArea: { maxHeight: 300 },
-  modalItem: {
-    paddingVertical: 16,
+
+  // New Styles for Edit/Delete Rows
+  modalItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
+    paddingVertical: 12,
+  },
+  modalItem: {
+    flex: 1,
+    paddingVertical: 4,
   },
   modalItemText: { fontSize: 16, color: "#334155" },
+  actionGroup: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  editBtn: {
+    backgroundColor: "#f1f5f9",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+  },
+  editBtnText: { color: "#3b82f6", fontSize: 12, fontWeight: "700" },
+  deleteBtn: {
+    backgroundColor: "#fef2f2",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+  },
+  deleteBtnText: { color: "#ef4444", fontSize: 12, fontWeight: "700" },
+
+  editRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  editInput: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#8b5cf6",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    fontSize: 14,
+    color: "#0f172a",
+  },
+  saveActionBtn: {
+    backgroundColor: "#8b5cf6",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  saveActionText: { color: "#ffffff", fontSize: 12, fontWeight: "700" },
+  cancelActionBtn: {
+    backgroundColor: "#f1f5f9",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  cancelActionText: { color: "#64748b", fontSize: 12, fontWeight: "700" },
+
   emptyText: { color: "#94a3b8", textAlign: "center", marginVertical: 20 },
   closeModalBtn: {
     marginTop: 16,

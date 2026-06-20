@@ -17,23 +17,22 @@ import { supabase } from "../../services/supabaseClient";
 export default function TrackingScreen({ navigation }) {
   const [borrowerName, setBorrowerName] = useState("");
   const [componentId, setComponentId] = useState("");
-  const [activeLoans, setActiveLoans] = useState([]);
+  const [loans, setLoans] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchActiveLoans();
+    fetchLoans();
   }, []);
 
-  const fetchActiveLoans = async () => {
+  const fetchLoans = async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("borrow_records")
       .select("*")
-      .eq("status", "borrowed")
       .order("borrow_date", { ascending: false });
 
     if (!error && data) {
-      setActiveLoans(data);
+      setLoans(data);
     }
     setLoading(false);
   };
@@ -47,39 +46,93 @@ export default function TrackingScreen({ navigation }) {
       return;
     }
 
-    const { error } = await supabase.from("borrow_records").insert([
-      {
-        borrower_name: borrowerName,
-        component_id: componentId,
-        status: "borrowed",
-        borrow_date: new Date(),
-      },
-    ]);
+    // STEP 1: Check if the component exists and has quantity > 0
+    const { data: compData, error: compError } = await supabase
+      .from("components")
+      .select("quantity, name")
+      .eq("id", componentId)
+      .single();
 
-    if (error) {
-      Alert.alert("Error", error.message);
+    if (compError || !compData) {
+      Alert.alert("Error", "Hardware ID not found in inventory.");
+      return;
+    }
+
+    if (compData.quantity <= 0) {
+      Alert.alert(
+        "Out of Stock",
+        `There are no more units of "${compData.name}" available in the lab.`,
+      );
+      return;
+    }
+
+    // STEP 2: Register the loan in the database
+    const { error: borrowError } = await supabase
+      .from("borrow_records")
+      .insert([
+        {
+          borrower_name: borrowerName,
+          component_id: componentId,
+          status: "borrowed",
+          borrow_date: new Date(),
+        },
+      ]);
+
+    if (borrowError) {
+      Alert.alert("Error", borrowError.message);
+      return;
+    }
+
+    // STEP 3: Deduct 1 from the available quantity in the inventory
+    const { error: updateError } = await supabase
+      .from("components")
+      .update({ quantity: compData.quantity - 1 })
+      .eq("id", componentId);
+
+    if (updateError) {
+      Alert.alert(
+        "Warning",
+        "Loan registered, but failed to update inventory count.",
+      );
     } else {
-      Alert.alert("Success", "Component loaned successfully");
+      Alert.alert("Success", "Equipment loaned and inventory updated!");
       setBorrowerName("");
       setComponentId("");
-      fetchActiveLoans();
+      fetchLoans();
     }
   };
 
   const handleReturn = async (compId, borrower) => {
-    const { error } = await supabase
+    // STEP 1: Mark the loan as returned with today's date
+    const { error: returnError } = await supabase
       .from("borrow_records")
       .update({ status: "returned", return_date: new Date() })
       .eq("component_id", compId)
       .eq("borrower_name", borrower)
       .eq("status", "borrowed");
 
-    if (error) {
-      Alert.alert("Error", error.message);
-    } else {
-      Alert.alert("Success", "Component marked as returned");
-      fetchActiveLoans();
+    if (returnError) {
+      Alert.alert("Error", returnError.message);
+      return;
     }
+
+    // STEP 2: Fetch the current quantity of the item
+    const { data: compData } = await supabase
+      .from("components")
+      .select("quantity")
+      .eq("id", compId)
+      .single();
+
+    // STEP 3: Add 1 back to the available inventory
+    if (compData) {
+      await supabase
+        .from("components")
+        .update({ quantity: compData.quantity + 1 })
+        .eq("id", compId);
+    }
+
+    Alert.alert("Success", "Equipment returned and inventory restored!");
+    fetchLoans();
   };
 
   const formatDate = (dateString) => {
@@ -93,56 +146,37 @@ export default function TrackingScreen({ navigation }) {
   };
 
   const renderLoanItem = ({ item }) => (
-    <View style={styles.loanCard}>
+    <View
+      style={[
+        styles.loanCard,
+        item.status === "returned"
+          ? styles.loanCardReturned
+          : styles.loanCardActive,
+      ]}>
       <View style={styles.loanInfo}>
         <Text style={styles.borrowerName}>{item.borrower_name}</Text>
         <Text style={styles.componentId}>ID: {item.component_id}</Text>
         <Text style={styles.dateText}>
           Borrowed: {formatDate(item.borrow_date)}
         </Text>
-      </View>
-      <TouchableOpacity
-        style={styles.returnButton}
-        onPress={() => handleReturn(item.component_id, item.borrower_name)}>
-        <Text style={styles.returnButtonText}>Return</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  const renderHeader = () => (
-    <View style={styles.headerContainer}>
-      <View style={styles.headerTextContainer}>
-        <Text style={styles.title}>Borrow & Return</Text>
-        <Text style={styles.subtitle}>Manage lab hardware circulation</Text>
+        {item.status === "returned" && (
+          <Text style={styles.returnDateText}>
+            Returned: {formatDate(item.return_date)}
+          </Text>
+        )}
       </View>
 
-      <View style={styles.formCard}>
-        <Text style={styles.sectionTitle}>Issue New Loan</Text>
-
-        <Text style={styles.label}>Borrower Name</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g., Trevor Leong"
-          placeholderTextColor="#94a3b8"
-          value={borrowerName}
-          onChangeText={setBorrowerName}
-        />
-
-        <Text style={styles.label}>Hardware ID</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g., COMP-2048"
-          placeholderTextColor="#94a3b8"
-          value={componentId}
-          onChangeText={setComponentId}
-        />
-
-        <TouchableOpacity style={styles.borrowButton} onPress={handleBorrow}>
-          <Text style={styles.borrowButtonText}>Register Loan</Text>
+      {item.status === "borrowed" ? (
+        <TouchableOpacity
+          style={styles.returnButton}
+          onPress={() => handleReturn(item.component_id, item.borrower_name)}>
+          <Text style={styles.returnButtonText}>Return</Text>
         </TouchableOpacity>
-      </View>
-
-      <Text style={styles.listTitle}>Active Loans</Text>
+      ) : (
+        <View style={styles.returnedBadge}>
+          <Text style={styles.returnedBadgeText}>✓ Returned</Text>
+        </View>
+      )}
     </View>
   );
 
@@ -157,18 +191,57 @@ export default function TrackingScreen({ navigation }) {
           </View>
         ) : (
           <FlatList
-            data={activeLoans}
+            data={loans}
             keyExtractor={(item) =>
               item.id?.toString() || Math.random().toString()
             }
             renderItem={renderLoanItem}
-            ListHeaderComponent={renderHeader}
             contentContainerStyle={styles.listContainer}
             showsVerticalScrollIndicator={false}
+            ListHeaderComponent={
+              <View style={styles.headerContainer}>
+                <View style={styles.headerTextContainer}>
+                  <Text style={styles.title}>Borrow & Return</Text>
+                  <Text style={styles.subtitle}>
+                    Manage lab hardware circulation
+                  </Text>
+                </View>
+
+                <View style={styles.formCard}>
+                  <Text style={styles.sectionTitle}>Issue New Loan</Text>
+
+                  <Text style={styles.label}>Borrower Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g., Trevor Leong"
+                    placeholderTextColor="#94a3b8"
+                    value={borrowerName}
+                    onChangeText={setBorrowerName}
+                  />
+
+                  <Text style={styles.label}>Hardware ID</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g., COMP-2048"
+                    placeholderTextColor="#94a3b8"
+                    value={componentId}
+                    onChangeText={setComponentId}
+                  />
+
+                  <TouchableOpacity
+                    style={styles.borrowButton}
+                    onPress={handleBorrow}>
+                    <Text style={styles.borrowButtonText}>Register Loan</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.listTitle}>Loan History</Text>
+              </View>
+            }
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>
-                  No active loans. All equipment is in the lab!
+                  No loan records found. All equipment is in the lab!
                 </Text>
               </View>
             }
@@ -281,7 +354,13 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
     borderLeftWidth: 4,
+  },
+  loanCardActive: {
     borderLeftColor: "#10b981",
+  },
+  loanCardReturned: {
+    borderLeftColor: "#cbd5e1",
+    backgroundColor: "#f8fafc",
   },
   loanInfo: {
     flex: 1,
@@ -301,7 +380,12 @@ const styles = StyleSheet.create({
   },
   dateText: {
     fontSize: 12,
+    color: "#64748b",
+  },
+  returnDateText: {
+    fontSize: 12,
     color: "#94a3b8",
+    marginTop: 2,
   },
   returnButton: {
     backgroundColor: "#ecfdf5",
@@ -314,6 +398,19 @@ const styles = StyleSheet.create({
   returnButtonText: {
     color: "#059669",
     fontSize: 14,
+    fontWeight: "700",
+  },
+  returnedBadge: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#ffffff",
+  },
+  returnedBadgeText: {
+    color: "#94a3b8",
+    fontSize: 13,
     fontWeight: "700",
   },
   loadingContainer: {
