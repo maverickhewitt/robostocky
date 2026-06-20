@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { supabase } from "../../services/supabaseClient";
 
-//This screen is for adding new components to the lab inventory. It allows users to input the component name, select or create a technical category, and specify the quantity. The screen also includes a modal for category selection and creation.
+//This screen allows users to add new components to the inventory, including specifying the component's name, category, and quantity. It also provides functionality for managing categories, such as creating new categories, editing existing ones, and deleting them. The screen uses a modal for category selection and management, ensuring a smooth user experience.
 export default function AddComponentScreen({ navigation }) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
@@ -25,6 +25,9 @@ export default function AddComponentScreen({ navigation }) {
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
 
   useFocusEffect(
     useCallback(() => {
@@ -35,7 +38,7 @@ export default function AddComponentScreen({ navigation }) {
   const fetchCategories = async () => {
     const { data, error } = await supabase
       .from("categories")
-      .select("name")
+      .select("id, name")
       .order("name", { ascending: true });
     if (!error && data) {
       setCategories(data);
@@ -64,6 +67,7 @@ export default function AddComponentScreen({ navigation }) {
     setCategory(selectedName);
     setDropdownVisible(false);
     setSearchText("");
+    setEditingCategoryId(null);
   };
 
   const handleCreateNewCategory = async () => {
@@ -79,9 +83,60 @@ export default function AddComponentScreen({ navigation }) {
       Alert.alert("Error", error.message);
       setIsCreating(false);
     } else {
-      setCategories([...categories, { name: newCatName }]);
+      await fetchCategories();
       selectCategory(newCatName);
       setIsCreating(false);
+    }
+  };
+
+  const handleDeleteCategory = (id, name) => {
+    Alert.alert(
+      "Delete Category",
+      `Are you sure you want to permanently remove "${name}" from the options list?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            const { error } = await supabase
+              .from("categories")
+              .delete()
+              .eq("id", id);
+            if (error) {
+              Alert.alert("Error", error.message);
+            } else {
+              fetchCategories();
+              if (category === name) setCategory("");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const startEditCategory = (item) => {
+    setEditingCategoryId(item.id);
+    setEditCategoryName(item.name);
+  };
+
+  const saveEditCategory = async () => {
+    if (!editCategoryName.trim()) return;
+
+    const { error } = await supabase
+      .from("categories")
+      .update({ name: editCategoryName.trim() })
+      .eq("id", editingCategoryId);
+
+    if (error) {
+      Alert.alert("Error", error.message);
+    } else {
+      const oldCategory = categories.find((c) => c.id === editingCategoryId);
+      if (oldCategory && category === oldCategory.name) {
+        setCategory(editCategoryName.trim());
+      }
+      setEditingCategoryId(null);
+      fetchCategories();
     }
   };
 
@@ -178,15 +233,55 @@ export default function AddComponentScreen({ navigation }) {
 
             <FlatList
               data={filteredCategories}
-              keyExtractor={(item, index) => index.toString()}
+              keyExtractor={(item) => item.id.toString()}
               keyboardShouldPersistTaps="handled"
               style={styles.listArea}
               renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.modalItem}
-                  onPress={() => selectCategory(item.name)}>
-                  <Text style={styles.modalItemText}>{item.name}</Text>
-                </TouchableOpacity>
+                <View style={styles.modalItemRow}>
+                  {editingCategoryId === item.id ? (
+                    <View style={styles.editRow}>
+                      <TextInput
+                        style={styles.editInput}
+                        value={editCategoryName}
+                        onChangeText={setEditCategoryName}
+                        autoFocus
+                      />
+                      <TouchableOpacity
+                        style={styles.saveActionBtn}
+                        onPress={saveEditCategory}>
+                        <Text style={styles.saveActionText}>Save</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.cancelActionBtn}
+                        onPress={() => setEditingCategoryId(null)}>
+                        <Text style={styles.cancelActionText}>X</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <>
+                      <TouchableOpacity
+                        style={styles.modalItem}
+                        onPress={() => selectCategory(item.name)}>
+                        <Text style={styles.modalItemText}>{item.name}</Text>
+                      </TouchableOpacity>
+
+                      <View style={styles.actionGroup}>
+                        <TouchableOpacity
+                          style={styles.editBtn}
+                          onPress={() => startEditCategory(item)}>
+                          <Text style={styles.editBtnText}>Edit</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.deleteBtn}
+                          onPress={() =>
+                            handleDeleteCategory(item.id, item.name)
+                          }>
+                          <Text style={styles.deleteBtnText}>Del</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </View>
               )}
               ListEmptyComponent={
                 searchText.trim() === "" ? (
@@ -202,8 +297,9 @@ export default function AddComponentScreen({ navigation }) {
               onPress={() => {
                 setDropdownVisible(false);
                 setSearchText("");
+                setEditingCategoryId(null);
               }}>
-              <Text style={styles.closeModalBtnText}>Cancel</Text>
+              <Text style={styles.closeModalBtnText}>Close Menu</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -305,12 +401,70 @@ const styles = StyleSheet.create({
   },
   createBtnText: { color: "#2563eb", fontSize: 15, fontWeight: "700" },
   listArea: { maxHeight: 300 },
-  modalItem: {
-    paddingVertical: 16,
+
+  modalItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
+    paddingVertical: 12,
+  },
+  modalItem: {
+    flex: 1,
+    paddingVertical: 4,
   },
   modalItemText: { fontSize: 16, color: "#334155" },
+  actionGroup: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  editBtn: {
+    backgroundColor: "#f1f5f9",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+  },
+  editBtnText: { color: "#3b82f6", fontSize: 12, fontWeight: "700" },
+  deleteBtn: {
+    backgroundColor: "#fef2f2",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+  },
+  deleteBtnText: { color: "#ef4444", fontSize: 12, fontWeight: "700" },
+  editRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  editInput: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#8b5cf6",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    fontSize: 14,
+    color: "#0f172a",
+  },
+  saveActionBtn: {
+    backgroundColor: "#8b5cf6",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  saveActionText: { color: "#ffffff", fontSize: 12, fontWeight: "700" },
+  cancelActionBtn: {
+    backgroundColor: "#f1f5f9",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  cancelActionText: { color: "#64748b", fontSize: 12, fontWeight: "700" },
+
   emptyText: { color: "#94a3b8", textAlign: "center", marginVertical: 20 },
   closeModalBtn: {
     marginTop: 16,
