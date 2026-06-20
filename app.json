@@ -19,7 +19,8 @@
         "monochromeImage": "./assets/images/robostocky.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.maverickhewitt.robostocky"
     },
     "web": {
       "output": "static",
@@ -43,6 +44,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "561a051a-cbb6-4ca4-a0ae-d3ffd34e3ee2"
+      }
     }
   }
 }
