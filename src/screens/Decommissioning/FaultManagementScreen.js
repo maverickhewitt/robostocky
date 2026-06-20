@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { supabase } from "../../services/supabaseClient";
 
+//This screen is for managing faulty or broken lab hardware. It allows users to report broken items, view a list of faulty items, and take actions such as repairing, scrapping, or editing the fault reason.
 export default function FaultManagementScreen({ navigation }) {
   const [componentId, setComponentId] = useState("");
   const [componentName, setComponentName] = useState("");
@@ -28,7 +29,6 @@ export default function FaultManagementScreen({ navigation }) {
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // New state for editing a fault's reason
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingFault, setEditingFault] = useState(null);
   const [editReason, setEditReason] = useState("");
@@ -59,7 +59,6 @@ export default function FaultManagementScreen({ navigation }) {
     setLoading(false);
   };
 
-  // --- 1. REPORT BROKEN ITEM ---
   const handleReportFault = async () => {
     if (!componentId || !faultyQty || !reason) {
       Alert.alert(
@@ -111,7 +110,6 @@ export default function FaultManagementScreen({ navigation }) {
     }
   };
 
-  // --- 2. REPAIR ITEM (Put back in inventory) ---
   const handleRepair = (fault) => {
     Alert.alert(
       "Repair Equipment",
@@ -146,7 +144,6 @@ export default function FaultManagementScreen({ navigation }) {
     );
   };
 
-  // --- 3. SCRAP ITEM (Permanently remove) ---
   const handleScrap = (fault) => {
     Alert.alert(
       "Scrap Equipment",
@@ -169,7 +166,6 @@ export default function FaultManagementScreen({ navigation }) {
     );
   };
 
-  // --- 4. EDIT FAULT REASON ---
   const openEditModal = (fault) => {
     setEditingFault(fault);
     setEditReason(fault.reason);
@@ -193,7 +189,6 @@ export default function FaultManagementScreen({ navigation }) {
     }
   };
 
-  // --- 5. UNDO / CANCEL FAULT LOG ---
   const handleUndoFault = (fault) => {
     Alert.alert(
       "Undo Fault Report",
@@ -372,7 +367,6 @@ export default function FaultManagementScreen({ navigation }) {
         )}
       </KeyboardAvoidingView>
 
-      {/* Component Selection Modal */}
       <Modal visible={dropdownVisible} transparent={true} animationType="fade">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -414,7 +408,6 @@ export default function FaultManagementScreen({ navigation }) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Edit Reason Modal */}
       <Modal visible={editModalVisible} transparent={true} animationType="fade">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}

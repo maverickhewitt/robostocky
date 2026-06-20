@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { supabase } from "../../services/supabaseClient";
 
+//This screen is for tracking borrowed and returned lab hardware. It allows users to register new loans, return borrowed items, and view the history of all loan records. The screen fetches data from the Supabase backend and updates the inventory accordingly.
 export default function TrackingScreen({ navigation }) {
   const [borrowerName, setBorrowerName] = useState("");
   const [componentId, setComponentId] = useState("");
@@ -46,7 +47,6 @@ export default function TrackingScreen({ navigation }) {
       return;
     }
 
-    // STEP 1: Check if the component exists and has quantity > 0
     const { data: compData, error: compError } = await supabase
       .from("components")
       .select("quantity, name")
@@ -66,7 +66,6 @@ export default function TrackingScreen({ navigation }) {
       return;
     }
 
-    // STEP 2: Register the loan in the database
     const { error: borrowError } = await supabase
       .from("borrow_records")
       .insert([
@@ -83,7 +82,6 @@ export default function TrackingScreen({ navigation }) {
       return;
     }
 
-    // STEP 3: Deduct 1 from the available quantity in the inventory
     const { error: updateError } = await supabase
       .from("components")
       .update({ quantity: compData.quantity - 1 })
@@ -103,7 +101,6 @@ export default function TrackingScreen({ navigation }) {
   };
 
   const handleReturn = async (compId, borrower) => {
-    // STEP 1: Mark the loan as returned with today's date
     const { error: returnError } = await supabase
       .from("borrow_records")
       .update({ status: "returned", return_date: new Date() })
@@ -116,14 +113,12 @@ export default function TrackingScreen({ navigation }) {
       return;
     }
 
-    // STEP 2: Fetch the current quantity of the item
     const { data: compData } = await supabase
       .from("components")
       .select("quantity")
       .eq("id", compId)
       .single();
 
-    // STEP 3: Add 1 back to the available inventory
     if (compData) {
       await supabase
         .from("components")

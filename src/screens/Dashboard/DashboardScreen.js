@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { supabase } from "../../services/supabaseClient";
 
+//This screen is the main dashboard for the lab inventory management app. It displays key statistics about the inventory, active deployments, and borrowed items. Users can navigate to different sections of the app from this screen, including Acquisition, Deployment, Decommissioning, and Tracking.
 export default function DashboardScreen({ navigation }) {
   const [stats, setStats] = useState({
     inventory: 0,

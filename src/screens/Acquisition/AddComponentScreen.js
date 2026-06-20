@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { supabase } from "../../services/supabaseClient";
 
+//This screen is for adding new components to the lab inventory. It allows users to input the component name, select or create a technical category, and specify the quantity. The screen also includes a modal for category selection and creation.
 export default function AddComponentScreen({ navigation }) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");

@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { supabase } from "../../services/supabaseClient";
 
+//This screen is for user login. It allows users to input their email and password to sign in. If the login is successful, the user is navigated to the Dashboard screen otherwise, an error message is displayed.
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

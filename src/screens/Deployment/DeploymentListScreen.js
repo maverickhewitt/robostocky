@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { supabase } from "../../services/supabaseClient";
 
+//This screen displays a list of all active deployments in the lab inventory. Users can search for deployments by project name or hardware ID.
 export default function DeploymentListScreen() {
   const [deployments, setDeployments] = useState([]);
   const [filteredDeployments, setFilteredDeployments] = useState([]);

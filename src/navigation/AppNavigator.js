@@ -13,6 +13,7 @@ import ProfileScreen from "../screens/Profile/ProfileScreen";
 
 const Stack = createNativeStackNavigator();
 
+//This is for navigation for each page for the app. Each screen is defined here with its corresponding component and options.
 export default function AppNavigator() {
   return (
     <Stack.Navigator initialRouteName="Login">

@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { supabase } from "../../services/supabaseClient";
 
+//This screen is for allocating lab hardware to active robot builds. It allows users to input a component ID and select or create a project name for deployment. The screen also includes a modal for project selection, creation, editing, and deletion.
 export default function AllocationScreen({ navigation }) {
   const [componentId, setComponentId] = useState("");
   const [projectName, setProjectName] = useState("");
@@ -441,7 +442,6 @@ const styles = StyleSheet.create({
   createBtnText: { color: "#8b5cf6", fontSize: 15, fontWeight: "700" },
   listArea: { maxHeight: 300 },
 
-  // New Styles for Edit/Delete Rows
   modalItemRow: {
     flexDirection: "row",
     alignItems: "center",

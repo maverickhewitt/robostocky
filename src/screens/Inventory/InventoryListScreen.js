@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { supabase } from "../../services/supabaseClient";
 
+//This screen displays a list of all components in the lab inventory. Users can search for components by name or category, view their details, and navigate to the EditComponentScreen to update component information.
 export default function InventoryListScreen({ navigation }) {
   const [inventory, setInventory] = useState([]);
   const [filteredInventory, setFilteredInventory] = useState([]);

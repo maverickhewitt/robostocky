@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { supabase } from "../../services/supabaseClient";
 
+//This screen is for editing existing components in the lab inventory. It allows users to update the component name, technical category, and quantity. Upon successful update, the user is notified and navigated back to the previous screen.
 export default function EditComponentScreen({ route, navigation }) {
   const { item } = route.params;
 
